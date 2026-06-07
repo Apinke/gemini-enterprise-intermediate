@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini Enterprise: Platform Deep Dive — Intermediate</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#060D1A;--panel:#0A1628;--g1:#4285F4;--g2:#0F9D58;--g3:#F4B400;--g4:#DB4437;--text:#E2E8F0;--dim:#64748B;--border:rgba(66,133,244,0.2);}
+body{background:var(--bg);font-family:'Rajdhani',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  background-image:linear-gradient(rgba(66,133,244,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(66,133,244,0.03) 1px,transparent 1px);background-size:40px 40px;}
+.hdr{width:100%;padding:16px 20px;text-align:center;background:linear-gradient(135deg,#0A1628,#162040);border-bottom:2px solid var(--g1);position:relative;overflow:hidden;}
+.hdr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--g1),var(--g2),var(--g3),var(--g4));}
+.hdr h1{font-family:'Orbitron',monospace;font-size:1.4rem;color:var(--g1);letter-spacing:3px;text-shadow:0 0 20px rgba(66,133,244,0.5);}
+.hdr p{font-size:0.8rem;color:var(--dim);margin-top:4px;font-family:'Share Tech Mono',monospace;}
+.level-badge{display:inline-block;background:transparent;color:var(--g2);font-family:'Orbitron',monospace;font-size:0.72rem;letter-spacing:2px;padding:3px 12px;border:1px solid var(--g2);border-radius:2px;margin-top:6px;box-shadow:0 0 10px rgba(15,157,88,0.3);}
+.prog-wrap{width:100%;max-width:600px;padding:8px 16px;display:flex;align-items:center;gap:10px;}
+.prog-bar{flex:1;height:3px;background:rgba(255,255,255,0.08);}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--g1),var(--g2),var(--g3),var(--g4));transition:width 0.4s;}
+.prog-txt{font-family:'Orbitron',monospace;font-size:0.68rem;color:var(--g1);white-space:nowrap;}
+.comic-wrap{width:100%;max-width:600px;padding:10px 16px;flex:1;}
+.book{width:100%;perspective:1400px;}
+.page{display:none;width:100%;}
+.page.active{display:block;}
+.page-inner{position:relative;width:100%;transform-style:preserve-3d;transition:transform 0.7s cubic-bezier(0.77,0,0.175,1);}
+.page-inner.flipped{transform:rotateY(-180deg);}
+.page-front,.page-back{width:100%;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:4px;border:1px solid var(--border);overflow:hidden;box-shadow:0 0 40px rgba(66,133,244,0.1),0 20px 60px rgba(0,0,0,0.5);}
+.page-back{position:absolute;top:0;left:0;transform:rotateY(180deg);background:linear-gradient(160deg,#0D1B3E,#060D1A);display:flex;align-items:center;justify-content:center;min-height:380px;}
+.comic-page{background:var(--panel);}
+.ch-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(66,133,244,0.1),rgba(15,157,88,0.05));}
+.ch-num{font-size:0.6rem;color:var(--g1);letter-spacing:2px;font-weight:700;}
+.ch-title{font-family:'Orbitron',monospace;font-size:0.85rem;color:#fff;letter-spacing:1px;}
+.ch-icon{font-size:1.2rem;}
+.panel{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.03);position:relative;}
+.panel:last-child{border-bottom:none;}
+.pl1{border-left:2px solid var(--g1);}
+.pl2{border-left:2px solid var(--g2);}
+.pl3{border-left:2px solid var(--g3);}
+.pl4{border-left:2px solid var(--g4);}
+.narr{font-size:0.68rem;color:var(--dim);margin-bottom:8px;font-style:italic;font-family:'Share Tech Mono',monospace;}
+.speak{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;}
+.av{font-size:1.8rem;flex-shrink:0;line-height:1;}
+.bubble{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px 12px;font-size:0.82rem;color:var(--text);line-height:1.5;flex:1;}
+.bubble.g1{border-color:rgba(66,133,244,0.4);background:rgba(66,133,244,0.05);}
+.bubble.g2{border-color:rgba(15,157,88,0.4);background:rgba(15,157,88,0.05);}
+.bubble.g3{border-color:rgba(244,180,0,0.4);background:rgba(244,180,0,0.05);}
+pre.code{background:#000;border:1px solid rgba(66,133,244,0.25);border-radius:4px;padding:10px 12px;font-size:0.7rem;color:#a5f3fc;line-height:1.7;overflow-x:auto;white-space:pre;margin:6px 0;font-family:'Share Tech Mono',monospace;}
+.c-c{color:var(--dim)}.c-b{color:var(--g4)}.c-g{color:var(--g2)}.c-y{color:var(--g3)}.c-v{color:#A855F7}
+.tbl{width:100%;border-collapse:collapse;margin:6px 0;font-size:0.72rem;}
+.tbl th{background:rgba(66,133,244,0.1);color:var(--g1);padding:5px 8px;text-align:left;border-bottom:1px solid var(--border);font-size:0.6rem;letter-spacing:1px;}
+.tbl td{padding:5px 8px;color:var(--text);border-bottom:1px solid rgba(255,255,255,0.03);}
+.ok{color:var(--g2)}.ng{color:var(--g4)}.wr{color:var(--g3)}
+.tag{display:inline-block;padding:1px 7px;border-radius:2px;font-size:0.62rem;margin:2px;font-family:'Share Tech Mono',monospace;}
+.tg1{background:rgba(66,133,244,0.1);color:var(--g1);border:1px solid rgba(66,133,244,0.2);}
+.tg2{background:rgba(15,157,88,0.1);color:var(--g2);border:1px solid rgba(15,157,88,0.2);}
+.tg3{background:rgba(244,180,0,0.1);color:var(--g3);border:1px solid rgba(244,180,0,0.2);}
+.tg4{background:rgba(219,68,55,0.1);color:var(--g4);border:1px solid rgba(219,68,55,0.2);}
+.back-content{padding:24px 20px;width:100%;}
+.bch{font-size:0.6rem;color:var(--g1);letter-spacing:3px;margin-bottom:6px;font-family:'Orbitron',monospace;}
+.bttl{font-family:'Orbitron',monospace;font-size:1.1rem;color:#fff;margin-bottom:16px;letter-spacing:1px;line-height:1.3;}
+.bpts{display:flex;flex-direction:column;gap:8px;}
+.bpt{background:rgba(255,255,255,0.02);border-left:2px solid var(--g1);padding:9px 12px;border-radius:0 4px 4px 0;font-size:0.82rem;color:var(--text);line-height:1.5;}
+.bpt strong{color:var(--g3);}
+.controls{display:flex;align-items:center;gap:8px;width:100%;max-width:600px;padding:0 16px 14px;flex-wrap:wrap;justify-content:center;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 16px;font-family:'Orbitron',monospace;font-size:0.72rem;cursor:pointer;transition:all 0.15s;border-radius:2px;letter-spacing:1px;}
+.bn{background:transparent;color:var(--g1);border:1px solid rgba(66,133,244,0.4);flex:1;min-width:80px;justify-content:center;}
+.bn:hover:not(:disabled){background:rgba(66,133,244,0.1);box-shadow:0 0 12px rgba(66,133,244,0.2);}
+.bn:disabled{opacity:0.2;cursor:not-allowed;}
+.bf{background:transparent;color:var(--g2);border:1px solid rgba(15,157,88,0.4);flex:1;min-width:80px;justify-content:center;}
+.bf:hover{background:rgba(15,157,88,0.08);}
+.bt{background:transparent;color:var(--g3);border:1px solid rgba(244,180,0,0.3);}
+.bt:hover{background:rgba(244,180,0,0.06);}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:200;align-items:center;justify-content:center;padding:16px;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:22px 18px;max-width:440px;width:100%;max-height:82vh;overflow-y:auto;box-shadow:0 0 60px rgba(66,133,244,0.1);}
+.modal h2{font-family:'Orbitron',monospace;font-size:0.9rem;color:var(--g1);text-align:center;letter-spacing:2px;margin-bottom:14px;}
+.ti{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:3px;cursor:pointer;border-bottom:1px solid var(--border);}
+.ti:hover{background:rgba(66,133,244,0.05);}
+.tn{width:26px;height:26px;background:rgba(66,133,244,0.1);border:1px solid var(--border);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:var(--g1);flex-shrink:0;font-family:'Orbitron',monospace;}
+.tc{font-size:0.6rem;color:var(--g1);letter-spacing:1px;font-family:'Orbitron',monospace;}
+.ts{font-size:0.82rem;color:var(--text);font-weight:600;}
+.mc{width:100%;margin-top:12px;background:transparent;color:var(--dim);border:1px solid var(--border);border-radius:2px;padding:8px;cursor:pointer;font-family:'Orbitron',monospace;font-size:0.7rem;letter-spacing:1px;}
+.hint{font-size:0.65rem;color:var(--dim);text-align:center;padding:0 16px 10px;font-family:'Share Tech Mono',monospace;}
+.footer{width:100%;text-align:center;padding:10px;font-size:0.62rem;color:var(--dim);border-top:1px solid var(--border);font-family:'Share Tech Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>// GEMINI ENTERPRISE</h1>
+  <p>Platform Deep Dive — Architecture, APIs, and Agentic Workflows</p>
+  <div class="level-badge">◈ INTERMEDIATE LEVEL</div>
+</div>
+<div class="prog-wrap">
+  <div class="prog-bar"><div class="prog-fill" id="pFill" style="width:7.14%"></div></div>
+  <div class="prog-txt" id="pTxt">01 / 14</div>
+</div>
+<div class="comic-wrap"><div class="book" id="book">
+
+<!-- PAGE 1 -->
+<div class="page active"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🏗️</span><div><div class="ch-num">MODULE 01</div><div class="ch-title">GEMINI ENTERPRISE PLATFORM ARCHITECTURE</div></div></div>
+  <div class="panel pl1">
+    <div class="narr">// Platform overview — what changed from Vertex AI to the Agentic Platform</div>
+    <pre class="code"><span class="c-c">// Gemini Enterprise Agent Platform (April 2026)</span>
+<span class="c-c">// Evolved from: Vertex AI → Generative AI Studio → Agentic Platform</span>
+
+platform = {
+  models:     ["Gemini 3.5 Flash", "Gemini Omni", "Gemma 4"],
+  agent_dev:  ["Agent Builder", "Agent Engine", "ADK"],
+  data:       ["Grounding", "RAG Engine", "Vector Search"],
+  govern:     ["Agent Registry", "Agent Gateway", "Audit Logs"],
+  deploy:     ["Cloud Run", "GKE", "Vertex AI Endpoints"]
+}</pre>
+  </div>
+  <div class="panel pl2">
+    <div class="speak"><div class="av">🤖</div>
+    <div class="bubble g2">Key shift: from "build ML models" to "deploy autonomous agents that complete real business workflows end-to-end."</div></div>
+  </div>
+  <div class="panel pl3">
+    <div class="narr">// Four platform layers:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+      <span class="tag tg1">Model Layer</span><span class="tag tg2">Agent Layer</span>
+      <span class="tag tg3">Data Layer</span><span class="tag tg4">Governance Layer</span>
+    </div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 01</div><div class="bttl">Platform Architecture</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Evolution:</strong> Vertex AI (2021) → Vertex AI Generative AI (2023) → Gemini Enterprise Agent Platform (April 2026). Each layer added capability and reduced required expertise.</div>
+    <div class="bpt"><strong>Model layer:</strong> Gemini 3.5 Flash (default, fast), Gemini Omni (multimodal frontier), Gemma 4 (open, deployable on-premises). All accessible via unified API.</div>
+    <div class="bpt"><strong>Agent layer:</strong> Agent Development Kit (ADK) for code-based development; Agent Builder for low-code; Agent Engine for managed runtime execution.</div>
+    <div class="bpt"><strong>Governance layer:</strong> Agent Registry (catalogue), Agent Gateway (policy enforcement), Audit Logs (complete action history). Enterprise trust infrastructure.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 2 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">⚡</span><div><div class="ch-num">MODULE 02</div><div class="ch-title">GEMINI 3.5 FLASH — MODEL CAPABILITIES</div></div></div>
+  <div class="panel pl1">
+    <div class="narr">// Gemini 3.5 Flash — default model as of June 8, 2026</div>
+    <pre class="code"><span class="c-c">// Model specifications:</span>
+model = "gemini-3.5-flash-preview-05-20"
+context_window = 1_000_000  <span class="c-c">// 1M token context</span>
+modalities_in  = ["text","image","audio","video","pdf"]
+modalities_out = ["text","code","structured_json"]
+latency        = "sub-second for most enterprise tasks"
+pricing        = "$0.075/M input tokens (text)"
+
+<span class="c-c">// Key capabilities added vs Gemini 2.0:</span>
+<span class="c-g">+ Native function calling with parallel execution</span>
+<span class="c-g">+ Improved instruction following accuracy</span>
+<span class="c-g">+ Better long-document comprehension</span>
+<span class="c-g">+ Reduced hallucination rate on factual tasks</span></pre>
+  </div>
+  <div class="panel pl2">
+    <div class="narr">// When to use Flash vs Omni:</div>
+    <table class="tbl">
+      <tr><th>USE CASE</th><th>FLASH</th><th>OMNI</th></tr>
+      <tr><td>Document analysis</td><td class="ok">✓ Optimal</td><td class="wr">Overkill</td></tr>
+      <tr><td>Code generation</td><td class="ok">✓ Optimal</td><td class="wr">Overkill</td></tr>
+      <tr><td>Video understanding</td><td class="ng">Limited</td><td class="ok">✓ Optimal</td></tr>
+      <tr><td>Audio processing</td><td class="ng">Limited</td><td class="ok">✓ Optimal</td></tr>
+      <tr><td>Agentic workflows</td><td class="ok">✓ Default</td><td class="ok">✓ Complex</td></tr>
+    </table>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 02</div><div class="bttl">Gemini 3.5 Flash</div>
+  <div class="bpts">
+    <div class="bpt"><strong>1M token context:</strong> Fits entire codebases, legal contracts, or annual reports in a single request. No chunking required for most enterprise documents.</div>
+    <div class="bpt"><strong>Native function calling:</strong> Declare tools as JSON schemas; the model decides when and how to call them. Parallel execution reduces latency for multi-step workflows.</div>
+    <div class="bpt"><strong>Pricing:</strong> $0.075/M input tokens (text), $0.30/M output tokens. Images $0.04 each. Cached input tokens 75% discount — critical for high-volume enterprise use.</div>
+    <div class="bpt"><strong>Preview vs GA:</strong> Gemini 3.5 Flash launched as preview May 2026, GA targeted Q3 2026. Enterprise commitments backed by SLAs available with Google Cloud Agreement.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 3 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🔧</span><div><div class="ch-num">MODULE 03</div><div class="ch-title">AGENT DEVELOPMENT KIT (ADK)</div></div></div>
+  <div class="panel pl2">
+    <div class="narr">// Building agents with the ADK — Python-first, multi-framework</div>
+    <pre class="code"><span class="c-c"># pip install google-adk</span>
+from google.adk.agents import Agent
+from google.adk.tools import google_search, code_execution
+
+<span class="c-c"># Define a research agent</span>
+research_agent = Agent(
+    name="market_researcher",
+    model="gemini-3.5-flash",
+    instruction="""You are a market research analyst.
+    When given a topic, search for recent data, analyse
+    trends, and produce a structured report.""",
+    tools=[google_search, code_execution],
+)
+
+<span class="c-c"># Run the agent</span>
+result = research_agent.run(
+    "Analyse AI adoption trends in West Africa Q1 2026"
+)
+print(result.report)  <span class="c-g"># Structured output</span></pre>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// ADK key features:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+      <span class="tag tg1">Multi-agent support</span><span class="tag tg2">Built-in tools</span>
+      <span class="tag tg3">Session management</span><span class="tag tg1">LangChain compatible</span>
+      <span class="tag tg2">Streaming support</span><span class="tag tg3">Evaluation framework</span>
+    </div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 03</div><div class="bttl">Agent Development Kit</div>
+  <div class="bpts">
+    <div class="bpt"><strong>ADK:</strong> Google's open-source Python framework for building production-grade AI agents. Released alongside the April 2026 platform launch.</div>
+    <div class="bpt"><strong>Built-in tools:</strong> google_search, code_execution, file_system, web_browser, BigQuery connector, Vertex AI Search. No custom integration needed for common tasks.</div>
+    <div class="bpt"><strong>Multi-framework:</strong> Works with LangChain, LlamaIndex, and CrewAI. Existing agentic workflows can be migrated to ADK with minimal changes.</div>
+    <div class="bpt"><strong>Evaluation:</strong> Built-in evaluation framework measures agent accuracy, hallucination rate, and task completion. Essential before deploying to production.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 4 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🔗</span><div><div class="ch-num">MODULE 04</div><div class="ch-title">MULTI-AGENT ORCHESTRATION PATTERNS</div></div></div>
+  <div class="panel pl1">
+    <div class="narr">// Three orchestration patterns in Gemini Enterprise</div>
+    <pre class="code"><span class="c-c"># Pattern 1: Sequential Pipeline</span>
+pipeline = [data_agent, analysis_agent, report_agent]
+result = run_pipeline(pipeline, task)
+
+<span class="c-c"># Pattern 2: Parallel Fan-out</span>
+results = await asyncio.gather(
+    legal_agent.run(contract),
+    finance_agent.run(contract),
+    risk_agent.run(contract)
+)
+final = summariser_agent.run(results)
+
+<span class="c-c"># Pattern 3: Hierarchical (Orchestrator + Workers)</span>
+class OrchestratorAgent(Agent):
+    workers = [search, code, data, comms]
+    
+    def plan(self, task):
+        <span class="c-c"># LLM decides which workers to use</span>
+        return self.model.plan_with_tools(task)</pre>
+  </div>
+  <div class="panel pl2">
+    <div class="speak"><div class="av">⚙️</div>
+    <div class="bubble g2">The orchestrator pattern is most powerful for complex tasks — the LLM plans which specialist agents to use, coordinates them, and synthesises results.</div></div>
+    <div class="narr">// Agent Engine manages state, retries, and failures automatically</div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 04</div><div class="bttl">Orchestration Patterns</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Sequential pipeline:</strong> Each agent's output feeds the next. Simple, predictable, easy to debug. Best for linear workflows like data → analyse → report.</div>
+    <div class="bpt"><strong>Parallel fan-out:</strong> Multiple agents work simultaneously on the same input. Best for independent analysis tasks where latency matters — legal, financial, and risk review in parallel.</div>
+    <div class="bpt"><strong>Hierarchical:</strong> An orchestrator LLM dynamically plans which worker agents to use based on the task. Most flexible, highest autonomy, requires careful governance configuration.</div>
+    <div class="bpt"><strong>Agent Engine:</strong> Gemini Enterprise's managed runtime handles agent state persistence, automatic retry on failure, and checkpoint recovery — critical for long-running workflows.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 5 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">📚</span><div><div class="ch-num">MODULE 05</div><div class="ch-title">GROUNDING AND RAG ENGINE</div></div></div>
+  <div class="panel pl3">
+    <div class="narr">// Connecting agents to your organisation's knowledge</div>
+    <pre class="code"><span class="c-c"># RAG (Retrieval-Augmented Generation) setup</span>
+from google.cloud import aiplatform
+from vertexai.preview.generative_models import grounding
+
+<span class="c-c"># Option 1: Ground to Google Search</span>
+grounding_config = grounding.GoogleSearchRetrieval()
+
+<span class="c-c"># Option 2: Ground to your own data store</span>
+data_store = grounding.VertexAISearch(
+    datastore=f"projects/{PROJECT}/locations/global/"
+              f"collections/default_collection/"
+              f"dataStores/{DATASTORE_ID}"
+)
+
+<span class="c-c"># Agent with grounding</span>
+agent = Agent(
+    model="gemini-3.5-flash",
+    tools=[Tool(google_search_retrieval=data_store)],
+    instruction="Answer using ONLY company knowledge base"
+)
+<span class="c-g"># Result: Accurate answers, citations, no hallucination</span></pre>
+  </div>
+  <div class="panel pl2">
+    <div class="narr">// Grounding options comparison:</div>
+    <table class="tbl">
+      <tr><th>SOURCE</th><th>USE CASE</th><th>FRESHNESS</th></tr>
+      <tr><td>Google Search</td><td>Real-time web info</td><td class="ok">Live</td></tr>
+      <tr><td>Vertex AI Search</td><td>Internal docs/KB</td><td class="wr">Near-real-time</td></tr>
+      <tr><td>Vector Search</td><td>Semantic similarity</td><td class="wr">Batch indexed</td></tr>
+      <tr><td>BigQuery</td><td>Structured data</td><td class="ok">Live SQL</td></tr>
+    </table>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 05</div><div class="bttl">Grounding & RAG</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Why grounding matters:</strong> LLMs hallucinate without grounding. RAG retrieves relevant documents at query time, giving the model accurate context rather than relying on training data.</div>
+    <div class="bpt"><strong>Vertex AI Search:</strong> Managed RAG pipeline — ingest documents (PDF, HTML, structured data), automatic chunking and embedding, semantic search at query time. No custom vector DB needed.</div>
+    <div class="bpt"><strong>Google Search grounding:</strong> Gives agents access to live web information. Responses include citations. Critical for tasks requiring current information beyond training cutoff.</div>
+    <div class="bpt"><strong>Inline citations:</strong> Gemini Enterprise grounding responses include source citations — essential for enterprise compliance where agents must justify their answers.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 6 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🛡️</span><div><div class="ch-num">MODULE 06</div><div class="ch-title">AGENT GOVERNANCE — REGISTRY AND GATEWAY</div></div></div>
+  <div class="panel pl4">
+    <div class="narr">// Agent Registry — centralised catalogue of all agents</div>
+    <pre class="code"><span class="c-c"># Register an agent</span>
+from google.cloud.agentplatform import AgentRegistry
+
+registry = AgentRegistry(project=PROJECT, location=REGION)
+agent_card = registry.register(
+    agent_id="expense-processor-v2",
+    display_name="Expense Report Processor",
+    description="Automates monthly expense reporting",
+    permissions=["bigquery.read", "gmail.send"],
+    owner="finance-team@company.com",
+    risk_level="MEDIUM",
+    human_approval_required=True  <span class="c-g"># for amounts >$10k</span>
+)</pre>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// Agent Gateway — policy enforcement at runtime</div>
+    <pre class="code"><span class="c-c"># Gateway intercepts every agent action</span>
+gateway_policies = {
+    "data_access": {
+        "allowed": ["finance-db", "hr-readonly"],
+        "blocked": ["customer-pii", "exec-comms"]
+    },
+    "external_calls": {
+        "allowed_domains": ["*.company.com", "api.approved.com"],
+        "rate_limit": "100 calls/hour"
+    },
+    "output_filters": {
+        "pii_detection": True,
+        "content_safety": True,
+        "confidential_marking": True
+    }
+}</pre>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 06</div><div class="bttl">Governance Architecture</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Agent Registry:</strong> Every agent must be registered before deployment. The registry stores metadata — purpose, permissions, owner, risk level — enabling discovery and accountability.</div>
+    <div class="bpt"><strong>Agent Gateway:</strong> Runtime policy enforcement. All agent inputs and outputs pass through. Enforces data access controls, rate limits, output filtering, and PII detection.</div>
+    <div class="bpt"><strong>Human-in-the-loop:</strong> Configure thresholds for mandatory human approval — amounts over $10k, sending to external parties, deleting data. Agents pause and wait for approval.</div>
+    <div class="bpt"><strong>Audit logging:</strong> Complete audit trail stored in Cloud Logging. Every tool call, data access, and output logged with timestamps. Queryable for compliance and incident investigation.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 7 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🔌</span><div><div class="ch-num">MODULE 07</div><div class="ch-title">TOOL USE AND FUNCTION CALLING</div></div></div>
+  <div class="panel pl2">
+    <div class="narr">// Declaring tools — the model decides when to call them</div>
+    <pre class="code"><span class="c-c"># Define a custom business tool</span>
+def get_invoice_status(invoice_id: str) -> dict:
+    <span class="c-c">"""Retrieves current status of an invoice from SAP."""</span>
+    return sap_client.get_invoice(invoice_id)
+
+def approve_payment(invoice_id: str, amount: float,
+                    approver: str) -> dict:
+    <span class="c-c">"""Approves payment. Requires human confirmation if >$5k."""</span>
+    if amount > 5000:
+        return {"status": "PENDING_HUMAN_APPROVAL",
+                "approval_url": f"/approve/{invoice_id}"}
+    return payment_system.process(invoice_id, amount)
+
+<span class="c-c"># Agent automatically selects and chains tools</span>
+agent = Agent(
+    model="gemini-3.5-flash",
+    tools=[get_invoice_status, approve_payment,
+           send_email, update_erp],
+    instruction="Process accounts payable autonomously"
+)</pre>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// Parallel function calling — multiple tools simultaneously:</div>
+    <pre class="code"><span class="c-c"># Model can call multiple tools in one turn</span>
+<span class="c-c"># e.g., check 3 invoices simultaneously:</span>
+results = await agent.run_parallel([
+    get_invoice_status("INV-001"),  <span class="c-c">// 3 calls at once</span>
+    get_invoice_status("INV-002"),
+    get_invoice_status("INV-003"),
+])  <span class="c-g">// 300ms vs 900ms sequential</span></pre>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 07</div><div class="bttl">Function Calling</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Declarative tools:</strong> Define functions in Python with type hints and docstrings — Gemini automatically generates the JSON schema and decides when to call them based on user intent.</div>
+    <div class="bpt"><strong>Parallel execution:</strong> Gemini 3.5 Flash supports parallel function calling — issuing multiple tool calls in a single model turn. Dramatically reduces latency for multi-system integrations.</div>
+    <div class="bpt"><strong>Human-in-the-loop integration:</strong> Tools can return PENDING_HUMAN_APPROVAL to pause workflows for human review. The agent resumes automatically when approval is received.</div>
+    <div class="bpt"><strong>Extensions vs Functions:</strong> Functions run in your code; Extensions are pre-built Google-managed integrations (Gmail, Calendar, Drive, BigQuery) with no custom code required.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 8 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">💾</span><div><div class="ch-num">MODULE 08</div><div class="ch-title">SESSION MANAGEMENT AND MEMORY</div></div></div>
+  <div class="panel pl3">
+    <div class="narr">// Agent memory types in Gemini Enterprise</div>
+    <pre class="code"><span class="c-c"># 1. In-context memory (within conversation)</span>
+session = agent.start_session(user_id="amara@company.com")
+session.add_context("User prefers executive summaries")
+session.add_context("Working on Q3 2026 budget review")
+
+<span class="c-c"># 2. Session persistence (across conversations)</span>
+from google.adk.memory import SessionStore
+store = SessionStore(backend="firestore")
+<span class="c-c"># Agent remembers context from previous sessions</span>
+
+<span class="c-c"># 3. Long-term knowledge (organisational memory)</span>
+from google.adk.memory import KnowledgeBase
+kb = KnowledgeBase(project=PROJECT)
+kb.remember("Our standard contract term is net-30")
+kb.remember("CFO approval needed for capex > $50k")</pre>
+  </div>
+  <div class="panel pl2">
+    <div class="speak"><div class="av">🧠</div>
+    <div class="bubble g1">Memory makes agents learn your organisation's context — after a month, your agent knows your preferences, your processes, and your data landscape.</div></div>
+    <div class="narr">// Memory is scoped: user / team / organisation level</div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 08</div><div class="bttl">Agent Memory</div>
+  <div class="bpts">
+    <div class="bpt"><strong>In-context memory:</strong> The conversation history within a session. With 1M token context, Gemini 3.5 can maintain very long conversations without losing earlier context.</div>
+    <div class="bpt"><strong>Session persistence:</strong> Stored in Firestore or Cloud SQL. Agents remember facts from previous conversations — user preferences, ongoing projects, previously established decisions.</div>
+    <div class="bpt"><strong>Organisational knowledge base:</strong> Shared memory across agents in an organisation — standard processes, approval thresholds, terminology. Agents learn once, apply everywhere.</div>
+    <div class="bpt"><strong>Memory scoping:</strong> Privacy controls determine what each agent can access. User memory is private; team memory is shared with the team; org memory is organisation-wide.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 9 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🚀</span><div><div class="ch-num">MODULE 09</div><div class="ch-title">DEPLOYMENT — AGENT ENGINE AND CLOUD RUN</div></div></div>
+  <div class="panel pl1">
+    <div class="narr">// Two deployment options: managed vs container</div>
+    <pre class="code"><span class="c-c"># Option 1: Agent Engine (fully managed)</span>
+from vertexai.preview import agent_engines
+
+agent_app = agent_engines.create(
+    agent=my_agent,
+    requirements=["google-adk>=0.5", "pandas>=2.0"],
+    display_name="Finance Automation Agent",
+    description="Handles AP/AR workflows",
+)
+<span class="c-c"># Google manages: scaling, infra, updates, monitoring</span>
+endpoint = agent_app.resource_name
+<span class="c-g"># → projects/{p}/locations/{l}/reasoningEngines/{id}</span>
+
+<span class="c-c"># Option 2: Cloud Run (containerised, more control)</span>
+<span class="c-c"># Dockerfile + ADK app → Cloud Run service</span>
+<span class="c-c"># Full control, custom auth, VPC integration</span></pre>
+  </div>
+  <div class="panel pl2">
+    <div class="narr">// Deployment comparison:</div>
+    <table class="tbl">
+      <tr><th>CRITERION</th><th>AGENT ENGINE</th><th>CLOUD RUN</th></tr>
+      <tr><td>Setup time</td><td class="ok">Minutes</td><td class="wr">Hours</td></tr>
+      <tr><td>Infrastructure</td><td class="ok">Managed</td><td class="wr">You manage</td></tr>
+      <tr><td>Customisation</td><td class="wr">Limited</td><td class="ok">Full</td></tr>
+      <tr><td>Cost model</td><td class="wr">Per-call premium</td><td class="ok">Per compute</td></tr>
+      <tr><td>Best for</td><td>Most enterprises</td><td>High-volume/custom</td></tr>
+    </table>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 09</div><div class="bttl">Deployment Options</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Agent Engine:</strong> Google's managed runtime. Deploy your ADK agent with one API call. Handles auto-scaling, monitoring, logging, and infra. Ideal for most enterprise use cases.</div>
+    <div class="bpt"><strong>Cloud Run:</strong> Container-based deployment for teams needing VPC integration, custom auth, specific runtimes, or cost optimisation at high volume.</div>
+    <div class="bpt"><strong>GKE (Kubernetes):</strong> For organisations with existing Kubernetes infrastructure needing fine-grained resource control and multi-region deployment.</div>
+    <div class="bpt"><strong>Monitoring:</strong> All deployments integrate with Cloud Monitoring and Cloud Logging — dashboards for latency, error rates, token usage, and cost per agent.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 10 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🔐</span><div><div class="ch-num">MODULE 10</div><div class="ch-title">IDENTITY, AUTH AND DATA SECURITY</div></div></div>
+  <div class="panel pl4">
+    <div class="narr">// Service account and IAM for agent identity</div>
+    <pre class="code"><span class="c-c"># Agent identity — principle of least privilege</span>
+gcloud iam service-accounts create agent-finance-sa \
+  --description="Finance agent service account" \
+  --display-name="Finance Agent"
+
+<span class="c-c"># Grant minimal permissions only</span>
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:agent-finance-sa@..." \
+  --role="roles/bigquery.dataViewer"  <span class="c-c"># read-only</span>
+
+gcloud projects add-iam-policy-binding $PROJECT \
+  --member="serviceAccount:agent-finance-sa@..." \
+  --role="roles/gmail.send"  <span class="c-c"># send email only</span>
+
+<span class="c-c"># NOT granted: bigquery.dataEditor, admin roles</span>
+<span class="c-g"># Blast radius limited if agent is compromised</span></pre>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// Data handling principles:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+      <span class="tag tg2">No training on your data</span>
+      <span class="tag tg1">CMEK encryption</span>
+      <span class="tag tg3">VPC-SC support</span>
+      <span class="tag tg2">Data residency controls</span>
+      <span class="tag tg1">GDPR / NDPA compliant</span>
+    </div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 10</div><div class="bttl">Security Architecture</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Agent identity:</strong> Each agent runs as a dedicated GCP service account with the minimum IAM permissions required. Compromise of one agent cannot escalate to broader system access.</div>
+    <div class="bpt"><strong>CMEK (Customer-Managed Encryption Keys):</strong> Organisations control their own encryption keys for all data processed by Gemini Enterprise. Google cannot decrypt without your key.</div>
+    <div class="bpt"><strong>VPC Service Controls:</strong> Isolate Gemini Enterprise within your VPC perimeter. Prevents data exfiltration even from authorised users and reduces blast radius of compromised credentials.</div>
+    <div class="bpt"><strong>Data residency:</strong> Process data in specified regions. Key for Nigerian NDPA, EU GDPR, and other data localisation regulations. Configurable at project and resource level.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 11 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">💰</span><div><div class="ch-num">MODULE 11</div><div class="ch-title">PRICING, QUOTAS AND COST OPTIMISATION</div></div></div>
+  <div class="panel pl3">
+    <div class="narr">// Cost model — know before you build</div>
+    <pre class="code"><span class="c-c"># Gemini 3.5 Flash pricing (June 2026):</span>
+input_text   = 0.075   <span class="c-c"># $/million tokens</span>
+input_image  = 0.04    <span class="c-c"># $/image</span>
+input_video  = 0.0015  <span class="c-c"># $/second</span>
+input_audio  = 0.001   <span class="c-c"># $/second</span>
+output_text  = 0.30    <span class="c-c"># $/million tokens</span>
+
+<span class="c-c"># Context caching (75% discount on repeated context):</span>
+cache_storage = 4.50   <span class="c-c"># $/million tokens/hour</span>
+cache_queries = 0.019  <span class="c-c"># $/million tokens (vs 0.075)</span>
+
+<span class="c-c"># Cost optimisation strategies:</span>
+<span class="c-g">1. Cache system prompts and static context</span>
+<span class="c-g">2. Use Flash not Omni for text-only tasks</span>
+<span class="c-g">3. Batch requests where real-time not needed</span>
+<span class="c-g">4. Set max_output_tokens to limit runaway costs</span></pre>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// Example monthly cost — 100-person team, 50 agent tasks/day:</div>
+    <div style="font-size:0.78rem;font-family:'Share Tech Mono',monospace;color:var(--g2);margin-top:4px;">
+      100 users × 50 tasks × ~500 tokens avg = 2.5M tokens/day<br/>
+      30 days × $0.075/M = <strong style="color:var(--g3);">~$5.60/day</strong><br/>
+      + Agent Engine runtime: ~$50/month<br/>
+      <strong style="color:var(--g2);">Total: ~$220/month for 100-person team</strong>
+    </div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 11</div><div class="bttl">Cost Optimisation</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Context caching:</strong> If your agent uses the same large document or system prompt repeatedly, cache it. Cached token queries cost 75% less than uncached — the biggest single cost lever.</div>
+    <div class="bpt"><strong>Model selection:</strong> Flash is 10x cheaper than Gemini Pro for comparable tasks. Reserve Omni for genuinely multimodal workflows. Most enterprise text tasks are well-served by Flash.</div>
+    <div class="bpt"><strong>Batch API:</strong> For non-real-time processing (overnight reports, bulk document analysis), use the Batch API at 50% discount vs online inference.</div>
+    <div class="bpt"><strong>Cost monitoring:</strong> Set budget alerts in Cloud Billing. Use agent-level labels to track cost per team, per workflow, per agent — critical for chargeback and ROI measurement.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 12 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🌍</span><div><div class="ch-num">MODULE 12</div><div class="ch-title">GEMINI OMNI — NEXT GENERATION</div></div></div>
+  <div class="panel pl1">
+    <div class="narr">// Gemini Omni — announced Google I/O 2026, "a leap in world understanding"</div>
+    <pre class="code"><span class="c-c"># Omni capabilities beyond Flash:</span>
+capabilities = {
+    "native_audio_output":  True,  <span class="c-g"># TTS without separate model</span>
+    "video_generation":     True,  <span class="c-g"># text → video clips</span>
+    "real_time_streaming":  True,  <span class="c-g"># live audio/video processing</span>
+    "world_model_reasoning": True, <span class="c-g"># physical world understanding</span>
+    "long_video_analysis":  True,  <span class="c-g"># hours of video in context</span>
+    "cross_modal_editing":  True,  <span class="c-g"># edit any modality with text</span>
+}
+
+<span class="c-c"># Enterprise use cases unlocked by Omni:</span>
+<span class="c-g"># - Analyse recorded sales calls → extract commitments</span>
+<span class="c-g"># - Watch product demo video → generate training material</span>
+<span class="c-g"># - Monitor CCTV feeds → safety compliance reporting</span>
+<span class="c-g"># - Transcribe + translate meetings → multilingual minutes</span></pre>
+  </div>
+  <div class="panel pl2">
+    <div class="narr">// Flash vs Omni decision matrix:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+      <span class="tag tg1">Flash: text/doc/code</span>
+      <span class="tag tg2">Flash: structured data</span>
+      <span class="tag tg3">Omni: audio/video</span>
+      <span class="tag tg4">Omni: real-time streams</span>
+    </div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 12</div><div class="bttl">Gemini Omni</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Native audio:</strong> Generates natural-sounding speech directly — no separate TTS model needed. Supports multiple languages and voice styles. Critical for voice-first agent interfaces.</div>
+    <div class="bpt"><strong>Real-time streaming:</strong> Processes live audio and video streams. Enables agents that can participate in live meetings, monitor real-time feeds, and respond to live customer calls.</div>
+    <div class="bpt"><strong>World model:</strong> Omni is designed to reason about the physical world — understanding spatial relationships, cause and effect in video, and real-world context beyond text.</div>
+    <div class="bpt"><strong>Access:</strong> Available in Gemini Enterprise as a premium tier. Pricing significantly higher than Flash — evaluate specific use cases for ROI before migrating from Flash.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 13 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">🏢</span><div><div class="ch-num">MODULE 13</div><div class="ch-title">ENTERPRISE INTEGRATION PATTERNS</div></div></div>
+  <div class="panel pl2">
+    <div class="narr">// Connecting Gemini Enterprise to your existing stack</div>
+    <table class="tbl">
+      <tr><th>SYSTEM</th><th>INTEGRATION METHOD</th><th>USE CASE</th></tr>
+      <tr><td>Google Workspace</td><td>Native extensions</td><td>Docs, Gmail, Calendar, Drive</td></tr>
+      <tr><td>Salesforce</td><td>ADK connector / REST</td><td>CRM data, opportunity analysis</td></tr>
+      <tr><td>SAP / Oracle ERP</td><td>REST API + auth</td><td>Finance, procurement, HR</td></tr>
+      <tr><td>ServiceNow</td><td>Webhook + ADK</td><td>ITSM automation</td></tr>
+      <tr><td>Slack / Teams</td><td>Native app</td><td>Chat-based agent interface</td></tr>
+      <tr><td>BigQuery</td><td>Native extension</td><td>SQL generation, data analysis</td></tr>
+      <tr><td>Custom APIs</td><td>OpenAPI spec</td><td>Any REST endpoint as tool</td></tr>
+    </table>
+  </div>
+  <div class="panel pl1">
+    <div class="narr">// OpenAPI auto-tool generation:</div>
+    <pre class="code"><span class="c-c"># Import any OpenAPI spec as agent tools</span>
+from google.adk.tools import openapi_tool
+
+your_api_tools = openapi_tool.from_spec(
+    spec_url="https://api.yourcompany.com/openapi.json",
+    auth=ServiceAccountAuth(sa_email)
+)
+agent = Agent(model="gemini-3.5-flash",
+              tools=your_api_tools)
+<span class="c-g"># Agent can now call any endpoint in your API spec</span></pre>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 13</div><div class="bttl">Integration Patterns</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Google Workspace:</strong> Deepest native integration. Agents can read/write Docs, send Gmail, update Sheets, schedule Calendar events — all with user-delegated auth and audit logging.</div>
+    <div class="bpt"><strong>OpenAPI auto-generation:</strong> Point ADK at any OpenAPI spec and it automatically creates typed tool definitions. The agent can call any endpoint without custom integration code.</div>
+    <div class="bpt"><strong>Webhook triggers:</strong> External systems can trigger agents via webhooks — a new Salesforce opportunity creates a research agent run; a ServiceNow ticket triggers an investigation agent.</div>
+    <div class="bpt"><strong>Data pipeline integration:</strong> Agents can trigger and monitor Dataflow, Dataproc, and BigQuery jobs — bridging AI and traditional data engineering workflows.</div>
+  </div>
+</div></div>
+</div></div>
+
+<!-- PAGE 14 -->
+<div class="page"><div class="page-inner">
+<div class="page-front"><div class="comic-page">
+  <div class="ch-header"><span class="ch-icon">📋</span><div><div class="ch-num">MODULE 14</div><div class="ch-title">IMPLEMENTATION ROADMAP</div></div></div>
+  <div class="panel pl2">
+    <div class="narr">// 90-day enterprise deployment roadmap</div>
+    <pre class="code"><span class="c-c">// Phase 1 (Days 1-30): Foundation</span>
+✓ Enable Gemini Enterprise on GCP project
+✓ Set up Agent Registry + Gateway policies
+✓ Configure IAM and data residency
+✓ Build first agent (single-task, low-risk)
+✓ Establish evaluation and monitoring baseline
+
+<span class="c-c">// Phase 2 (Days 31-60): Production</span>
+✓ Deploy to production with Agent Engine
+✓ Integrate with 2-3 core business systems
+✓ Implement RAG for internal knowledge base
+✓ Train first cohort of agent builders
+✓ Measure ROI against baseline
+
+<span class="c-c">// Phase 3 (Days 61-90): Scale</span>
+✓ Multi-agent orchestration workflows
+✓ Expand to additional departments
+✓ Establish agent lifecycle management
+✓ Evaluate Omni for video/audio use cases</pre>
+  </div>
+  <div class="panel pl1" style="text-align:center;padding:14px;background:rgba(66,133,244,0.04);">
+    <div style="font-family:'Orbitron',monospace;font-size:0.85rem;color:var(--g1);letter-spacing:2px;">// PLATFORM READY</div>
+    <div style="font-size:0.72rem;color:var(--dim);margin-top:6px;font-family:'Share Tech Mono',monospace;">Gemini Enterprise Platform · By Gbemisola Esho · GDE · 2026</div>
+  </div>
+</div></div>
+<div class="page-back"><div class="back-content">
+  <div class="bch">MODULE 14</div><div class="bttl">Implementation Roadmap</div>
+  <div class="bpts">
+    <div class="bpt"><strong>Start with governance:</strong> Set up Agent Registry, Gateway policies, and IAM before building any agents. Retrofitting governance is 10x harder than starting with it.</div>
+    <div class="bpt"><strong>First agent principle:</strong> Choose a low-risk, high-repetition task for your first agent — document summarisation, data extraction, or meeting notes. Build confidence before complex workflows.</div>
+    <div class="bpt"><strong>Measure from day one:</strong> Define success metrics before deployment — time saved, accuracy rate, cost per task. ROI measurement drives organisational buy-in for expansion.</div>
+    <div class="bpt"><strong>Agent lifecycle:</strong> Treat agents like software — version control, testing, staged rollout, monitoring, deprecation. The ADK and Agent Engine provide all necessary infrastructure.</div>
+  </div>
+</div></div>
+</div></div>
+
+</div></div>
+<div class="controls">
+  <button class="btn bn" id="btnPrev" onclick="nav(-1)" disabled>◀ PREV</button>
+  <button class="btn bf" onclick="flip()">⟳ FLIP</button>
+  <button class="btn bt" onclick="openTOC()">≡ IDX</button>
+  <button class="btn bn" id="btnNext" onclick="nav(1)">NEXT ▶</button>
+</div>
+<p class="hint">// flip → analysis notes · ←→ navigate · space → flip</p>
+<div class="modal-overlay" id="tocModal" onclick="closeTOC(event)">
+  <div class="modal">
+    <h2>// MODULE INDEX</h2>
+    <div id="tocList"></div>
+    <button class="mc" onclick="document.getElementById('tocModal').classList.remove('open')">[ CLOSE ]</button>
+  </div>
+</div>
+<div class="footer">// GEMINI ENTERPRISE PLATFORM DEEP DIVE · GBEMISOLA ESHO · GDE · 2026 · INTERMEDIATE</div>
+<script>
+const CH=[
+  {n:"MOD.01",t:"Platform Architecture"},{n:"MOD.02",t:"Gemini 3.5 Flash Capabilities"},
+  {n:"MOD.03",t:"Agent Development Kit"},{n:"MOD.04",t:"Multi-Agent Orchestration"},
+  {n:"MOD.05",t:"Grounding and RAG Engine"},{n:"MOD.06",t:"Agent Governance"},
+  {n:"MOD.07",t:"Tool Use and Function Calling"},{n:"MOD.08",t:"Session Management"},
+  {n:"MOD.09",t:"Deployment Options"},{n:"MOD.10",t:"Identity and Security"},
+  {n:"MOD.11",t:"Pricing and Cost Optimisation"},{n:"MOD.12",t:"Gemini Omni"},
+  {n:"MOD.13",t:"Enterprise Integration Patterns"},{n:"MOD.14",t:"Implementation Roadmap"},
+];
+let cur=0;const tot=14;
+const allP=document.querySelectorAll('.page');
+function ui(){
+  allP.forEach((p,i)=>p.classList.toggle('active',i===cur));
+  document.getElementById('btnPrev').disabled=cur===0;
+  document.getElementById('btnNext').disabled=cur===tot-1;
+  document.getElementById('pFill').style.width=((cur+1)/tot*100)+'%';
+  document.getElementById('pTxt').textContent=String(cur+1).padStart(2,'0')+' / '+String(tot).padStart(2,'0');
+  const inn=allP[cur].querySelector('.page-inner');
+  if(inn)inn.classList.remove('flipped');
+}
+function nav(d){const n=cur+d;if(n>=0&&n<tot){cur=n;ui();}}
+function flip(){const inn=allP[cur].querySelector('.page-inner');if(inn)inn.classList.toggle('flipped');}
+function openTOC(){
+  document.getElementById('tocList').innerHTML=CH.map((c,i)=>`
+    <div class="ti" onclick="goto(${i})">
+      <div class="tn">${String(i+1).padStart(2,'0')}</div>
+      <div><div class="tc">${c.n}</div><div class="ts">${c.t}</div></div>
+    </div>`).join('');
+  document.getElementById('tocModal').classList.add('open');
+}
+function closeTOC(e){if(!e||e.target===document.getElementById('tocModal'))document.getElementById('tocModal').classList.remove('open');}
+function goto(i){cur=i;ui();document.getElementById('tocModal').classList.remove('open');}
+let sx=0;
+document.getElementById('book').addEventListener('touchstart',e=>{sx=e.touches[0].clientX;});
+document.getElementById('book').addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50)nav(dx<0?1:-1);});
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')nav(1);if(e.key==='ArrowLeft')nav(-1);if(e.key===' '){e.preventDefault();flip();}});
+ui();
+</script>
+</body>
+</html>
