@@ -1,9 +1,7 @@
 # 🤖 GEMINI ENTERPRISE — INTERMEDIATE
 ### Interactive Comic by Gbemisola Esho
 
-<p align="center">
-  <img src="afralo_logo.jpeg" alt="AFRALO ICANN At-Large" height="80"/>
-</p>
+
 
 <p align="center">
   <a href="https://Apinke.github.io/gemini-enterprise-intermediate/"><strong>▶ Read the Live Comic</strong></a> &nbsp;·&nbsp;
@@ -72,6 +70,6 @@ Licensed under [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) — free
 ## 👩🏾‍💻 About the Author
 
 **Gbemisola Esho** — Google Developer Expert (GDE), WTM Ambassador, founder of [Connectobridge](https://connectobridge.com).
-*Produced in association with AFRALO / ICANN At-Large.*
 
-<p align="center"><img src="afralo_logo.jpeg" alt="AFRALO" height="50"/></p>
+
+
